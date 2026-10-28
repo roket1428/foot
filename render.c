@@ -361,13 +361,12 @@ draw_beam_cursor(const struct terminal *term, pixman_image_t *pix,
                  const struct fcft_font *font,
                  const pixman_color_t *color, int x, int y)
 {
-    int baseline = y + term->font_baseline - term->fonts[0]->ascent;
     pixman_image_fill_rectangles(
         PIXMAN_OP_SRC, pix, color,
         1, &(pixman_rectangle16_t){
-            x, baseline,
+            x, y,
             term_pt_or_px_as_pixels(term, &term->conf->cursor.beam_thickness),
-            term->fonts[0]->ascent + term->fonts[0]->descent});
+            term->cell_height});
 }
 
 static int
@@ -389,14 +388,10 @@ draw_underline_cursor(const struct terminal *term, pixman_image_t *pix,
             term, &term->conf->cursor.underline_thickness)
         : font->underline.thickness;
 
-    /* Make sure the line isn't positioned below the cell */
-    const int y_ofs = min(underline_offset(term, font) + thickness,
-                          term->cell_height - thickness);
-
     pixman_image_fill_rectangles(
         PIXMAN_OP_SRC, pix, color,
         1, &(pixman_rectangle16_t){
-            x, y + y_ofs, cols * term->cell_width, thickness});
+            x, y + term->cell_height - thickness, cols * term->cell_width, thickness});
 }
 
 static void
@@ -638,6 +633,9 @@ draw_cursor(const struct terminal *term, const struct cell *cell,
             const struct fcft_font *font, pixman_image_t *pix, pixman_color_t *fg,
             const pixman_color_t *bg, int x, int y, int cols)
 {
+    pixman_color_t default_cursor_color = color_hex_to_pixman(term->reverse ? term->colors.bg : term->colors.fg,
+                                                              wayl_do_linear_blending(term->wl, term->conf));
+
     pixman_color_t cursor_color;
     pixman_color_t text_color;
     cursor_colors_for_cell(term, cell, fg, bg, &cursor_color, &text_color,
@@ -673,7 +671,7 @@ draw_cursor(const struct terminal *term, const struct cell *cell,
         if (likely(term->cursor_blink.state == CURSOR_BLINK_ON ||
                    !term->kbd_focus))
         {
-            draw_beam_cursor(term, pix, font, &cursor_color, x, y);
+            draw_beam_cursor(term, pix, font, &default_cursor_color, x, y);
         }
         break;
 
@@ -681,7 +679,7 @@ draw_cursor(const struct terminal *term, const struct cell *cell,
         if (likely(term->cursor_blink.state == CURSOR_BLINK_ON ||
                    !term->kbd_focus))
         {
-            draw_underline_cursor(term, pix, font, &cursor_color, x, y, cols);
+            draw_underline_cursor(term, pix, font, &default_cursor_color, x, y, cols);
         }
         break;
 
@@ -1856,7 +1854,7 @@ render_ime_preedit_for_seat(struct terminal *term, struct seat *seat,
             /* Bar */
             if (start >= 0) {
                 struct fcft_font *font = attrs_to_font(term, &start_cell->attrs);
-                draw_beam_cursor(term, buf->pix[0], font, &cursor_color, x, y);
+                draw_beam_cursor(term, buf->pix[0], font, &fg, x, y);
             }
             term_ime_set_cursor_rect(term, x, y, 1, term->cell_height);
         }
